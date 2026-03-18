@@ -1,6 +1,6 @@
 import java.util.*;
 
-// Reservation Entity (represents booking intent)
+// Reservation Entity
 class Reservation {
     private String guestName;
     private String roomType;
@@ -19,29 +19,74 @@ class Reservation {
     }
 }
 
-// Booking Request Queue (FIFO structure)
-class BookingRequestQueue {
-    private Queue<Reservation> queue;
+// Inventory Service (State Holder)
+class InventoryService {
+    private Map<String, Integer> availability = new HashMap<>();
 
-    public BookingRequestQueue() {
-        queue = new LinkedList<>();
+    public InventoryService() {
+        availability.put("Single", 2);
+        availability.put("Double", 1);
+        availability.put("Suite", 1);
     }
 
-    // Add request to queue
-    public void addRequest(Reservation reservation) {
-        queue.offer(reservation);
+    public int getAvailability(String roomType) {
+        return availability.getOrDefault(roomType, 0);
     }
 
-    // Process requests in FIFO order (read-only simulation)
-    public void processRequests() {
-        System.out.println("Booking Request Queue\n");
+    public void decrement(String roomType) {
+        availability.put(roomType, availability.get(roomType) - 1);
+    }
+}
 
-        while (!queue.isEmpty()) {
-            Reservation res = queue.poll(); // FIFO removal
-            System.out.println("Processing booking for Guest: "
-                    + res.getGuestName()
-                    + ", Room Type: "
-                    + res.getRoomType());
+// Booking Service (Allocation Logic)
+class BookingService {
+    private Queue<Reservation> bookingQueue;
+
+    // Track allocated room IDs
+    private Map<String, Set<String>> allocatedRooms = new HashMap<>();
+
+    public BookingService(Queue<Reservation> bookingQueue) {
+        this.bookingQueue = bookingQueue;
+    }
+
+    public void processBookings(InventoryService inventory) {
+        System.out.println("Room Allocation Processing\n");
+
+        while (!bookingQueue.isEmpty()) {
+            Reservation res = bookingQueue.poll();
+            String type = res.getRoomType();
+
+            // Check availability
+            if (inventory.getAvailability(type) > 0) {
+
+                // Initialize set if not present
+                allocatedRooms.putIfAbsent(type, new HashSet<>());
+
+                Set<String> roomSet = allocatedRooms.get(type);
+
+                // Generate unique room ID
+                int roomNumber = roomSet.size() + 1;
+                String roomId = type + "-" + roomNumber;
+
+                // Ensure uniqueness using Set
+                if (!roomSet.contains(roomId)) {
+                    roomSet.add(roomId);
+
+                    // Update inventory immediately (atomic step)
+                    inventory.decrement(type);
+
+                    // Confirm booking
+                    System.out.println("Booking confirmed for Guest: "
+                            + res.getGuestName()
+                            + ", Room ID: "
+                            + roomId);
+                }
+
+            } else {
+                System.out.println("Booking failed for Guest: "
+                        + res.getGuestName()
+                        + " (No rooms available)");
+            }
         }
     }
 }
@@ -50,14 +95,19 @@ class BookingRequestQueue {
 public class bookmystayapp {
     public static void main(String[] args) {
 
-        BookingRequestQueue bookingQueue = new BookingRequestQueue();
+        // Step 1: Prepare booking queue (FIFO)
+        Queue<Reservation> bookingQueue = new LinkedList<>();
+        bookingQueue.offer(new Reservation("Abhi", "Single"));
+        bookingQueue.offer(new Reservation("Subha", "Single"));
+        bookingQueue.offer(new Reservation("Vanmathi", "Suite"));
 
-        // Simulating guest booking requests (arrival order matters)
-        bookingQueue.addRequest(new Reservation("Abhi", "Single"));
-        bookingQueue.addRequest(new Reservation("Subha", "Double"));
-        bookingQueue.addRequest(new Reservation("Vanmathi", "Suite"));
+        // Step 2: Inventory
+        InventoryService inventory = new InventoryService();
 
-        // Process requests in FIFO order
-        bookingQueue.processRequests();
+        // Step 3: Booking Service
+        BookingService bookingService = new BookingService(bookingQueue);
+
+        // Step 4: Process allocations
+        bookingService.processBookings(inventory);
     }
 }
